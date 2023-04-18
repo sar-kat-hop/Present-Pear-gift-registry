@@ -1,58 +1,123 @@
 {{! List those peeps! }}
 <div class="container-fluid bg-light bg-gradient">
   <h2 class="text-uppercase text-secondary">{{group.title}}</h2>
+  {{#if (test_ownership group.owning_user_id user_id)}}
+    <button type="button" id="group-title-btn" class="btn btn-dark mx-1">Change title</button>
+    <div class="container-fluid text-center visually-hidden" id="groupFormDiv">
+      <form id="group-title-form" data-group_id="{{group.id}}">
+        <input
+          type="text"
+          id="new-group-title"
+          class="form-control"
+          placeholder="Title"
+        />
+        <button
+          type="submit"
+          class="btn btn-dark"
+          id="group-title-save-btn"
+        >Save</button>
+      </form>
+    </div>
+
+    <button type="button" id="add-user-btn" class="btn btn-dark mx-1">Add user by email</button>
+    <div class="container-fluid text-center visually-hidden" id="userFormDiv">
+      <form id="new-user-form" data-group_id="{{group.id}}">
+        <input
+          type="text"
+          id="new-email"
+          class="form-control"
+          placeholder="email"
+        />
+        <button
+          type="submit"
+          class="btn btn-dark"
+          id="new-user-save-btn"
+        >Save</button>
+      </form>
+    </div>
+  {{else}}
+    <button type="button" id="user-del-btn-{{user_id}}" data-user_id="{{user_id}}" data-group_id="{{group.id}}" class="btn btn-danger">Leave Group</button>
+  {{/if}}
   <div class="d-grid gap-2 col-8 mx-auto">
     <ul class="list-group">
+      {{#if owner.id}}
+        <li
+          data-user="{{owner.id}}"
+          class="list-group-item font-weight-bold text-center btn btn-success py-3"
+          type="button"
+        >
+        {{owner.username}}
+      </li>
+      {{/if}}
+
       {{#each group.users as |user|}}
-        {{#if user}}
-          <li
-            data-user="{{user.id}}"
-            class="list-group-item font-weight-bold text-center btn btn-success py-3" type="button"
-          >
-            {{user.username}}
-          </li>
+        <li
+          data-user="{{user.id}}"
+          class="list-group-item font-weight-bold text-center btn btn-success py-3"
+          type="button"
+        >
+          {{user.username}}
+        </li>
+        {{#if (test_ownership ../group.owning_user_id ../user_id)}}
+          <button type="button" id="user-del-btn-{{user.id}}" data-user_id="{{user.id}}" 
+          data-group_id="{{../group.id}}" class="btn btn-danger">Remove User</button>
         {{/if}}
       {{/each}}
     </ul>
     <span class="border-bottom border-black-50 border-3"></span>
   </div>
 
-{{! Cards for items :) }}
-{{! Title}}
-    <div id="lists" class="col">
-      {{#each group.lists as |list|}}
-        <div data-owner="{{list.user_id}}" style="display: none">
-          <h3 class="text-uppercase text-secondary">{{list.title}}</h3>
-          {{!-- item cards --}}
-          <div class="mx-auto">
-            <div class="card-deck">
-                <div class="row">
-                    {{!-- Items in list --}}
-                    {{#each list.items as |item|}}
-                    <div class="col-4 m-2">
-                        <div class="card align-items-center text-center g-3 shadow p-3 mb-5 bg-body rounded" style="width: 18rem">
-                            <div class="card-body">
-                                <h5 class="card-title ">{{item.title}}</h5>
-                                {{#if item.description}}
-                                    <p class="card-text">{{item.description}}</p>
-                                {{/if}}
-                                {{#if item.link}}
-                                    <a href="{{item.link}}" target="_blank" rel='noreferrer' class="card-link">Link to Product</a>
-                                {{/if}}
-                                <button id="item-del-btn-{{item.id}}" type="button" data-item_id="{{item.id}}" class="btn btn-danger">X</button>
-                            </div>
-                        </div>
+  {{! Container for item lists :) }}
+  <div id="lists" data-logged-in-user="{{user_id}}" class="col">
+    {{!-- Individual lists --}}
+    {{#each group.lists as |list|}}
+      <div data-owner="{{list.user_id}}" style="display: none">
+        <h3 class="text-uppercase text-secondary">{{list.title}}</h3>
+        {{! item cards }}
+        <div class="mx-auto">
+          <div class="card-deck">
+            <div class="row">
+              {{! Items in list }}
+              {{#each list.items as |item|}}
+                <div class="col-4 m-2">
+                  <div
+                    class="card align-items-center text-center g-3 shadow p-3 mb-5 bg-body rounded"
+                    style="width: 18rem"
+                  >
+                    <div class="card-body">
+                      <h5 class="card-title">{{item.title}}</h5>
+                      {{#if item.description}}
+                        <p class="card-text">{{item.description}}</p>
+                      {{/if}}
+                      {{#if item.link}}
+                        <a
+                          href="{{item.link}}"
+                          target="_blank"
+                          rel="external"
+                          class="card-link"
+                        >Link to Product</a>
+                      {{/if}}
+                      <button
+                        type="button"
+                        data-item_id="{{item.id}}"
+                        data-claimed-user="{{item.claimed_user}}"
+                        {{!-- Logged in user not populating --}}
+                        data-claimed-status="{{item.status}}"
+                        class="btn btn-dark claim-btn"
+                      >Claim</button>
                     </div>
-                    {{/each}}
-                    </div>
+                  </div>
+                </div>
+              {{/each}}
             </div>
           </div>
         </div>
-      {{/each}}
-    </div>
+      </div>
+    {{/each}}
+  </div>
 </div>
-{{!-- Card class template --}}
-{{!-- 
+{{! Card class template }}
+{{! 
  <div class="card" style="width: 18rem;">
   <img src="..." class="card-img-top" alt="...">
   <div class="card-body">
@@ -60,7 +125,6 @@
     <p class="card-text">Some quick example text to build on the card title and make up the bulk of the card's content.</p>
     <a href="#" class="btn btn-primary">Go somewhere</a>
   </div>
-</div> --}}
-
+</div> }}
 
 <script src="/js/groupPage.js"></script>

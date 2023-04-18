@@ -1,9 +1,9 @@
 const { Op } = require("sequelize");
 const router = require("express").Router();
 const { User, List, Group, Item, GroupUser, GroupList } = require("../models");
+const { check_user_group_access } = require('../utils/helpers');
 
-//homepage. Includes all groups a user is a part of, and all lists the user has made.
-//Page includes options to: login/logout, select a group, select a list, and create a list/group.
+// homepage
 router.get("/", async (req, res) => {
   // Get groups based on logged in users ID
   if (req.session.loggedIn) {
@@ -14,11 +14,24 @@ router.get("/", async (req, res) => {
         where: {
           id: req.session.userID,
         },
+       attributes: {exclude: ['password','email']}
       },
     }).catch((err) => {
       res.json(err);
     });
     const groups = groupData.map((group) => group.get({ plain: true }));
+
+    // Get owned groups based on logged in users ID
+    const ownedGroupData = await Group.findAll({
+      where: {
+        owning_user_id: req.session.userID,
+      },
+    }).catch((err) => {
+      res.json(err);
+    });
+    const ownedGroups = ownedGroupData.map((group) =>
+      group.get({ plain: true })
+    );
 
     // Get lists based on logged in users ID
     const listData = await List.findAll({
@@ -30,7 +43,13 @@ router.get("/", async (req, res) => {
     });
     const lists = listData.map((list) => list.get({ plain: true }));
 
-    res.render("homepage", { groups, lists, loggedIn: req.session.loggedIn });
+    res.render("homepage", {
+      groups,
+      lists,
+      ownedGroups,
+      loggedIn: req.session.loggedIn,
+      user_id: req.session.userID,
+    });
   } else {
     res.render("login");
   }
@@ -44,82 +63,106 @@ router.get("/", async (req, res) => {
 router.get("/group/:id", async (req, res) => {
   const groupData = await Group.findByPk(req.params.id, {
     include: [
-      { model: User },
-      { model: User, through: { model: GroupUser } },
+      { model: User, through: { model: GroupUser }, attributes: {exclude: ['password','email']}},
       { model: List, through: { model: GroupList }, include: { model: Item } },
     ],
   });
+  if(!groupData) {
+    res.send('No group with that ID.');
+    return;
+  }
   let group = groupData.get({ plain: true });
-
-  let user_belongs = false;
-
+  if(!check_user_group_access(group, req.session.userID)) {
+    res.redirect("/");
+    return;
+  }
+  
   for (const user in group.users) {
     if (group.users[user].id === req.session.userID) {
       delete group.users[user];
-      user_belongs = true;
     }
   }
 
-  if (!user_belongs) {
-    res.send("You dont own this group.");
-    return;
+  const ownerData = await User.findByPk(group.owning_user_id, {
+      attributes: {exclude: ['password']}
+    
+  });
+  let owner = ownerData.get({plain: true});
+  if(group.owning_user_id === req.session.userID) {
+    owner = 0;
   }
 
   res.render("groupPage", {
     group,
+    owner,
     loggedIn: req.session.loggedIn,
-    userID: req.session.userID,
+    user_id: req.session.userID,
   });
 });
 
-//list page. Includes information on the list the user selected from the homepage, including the list title and all groups with access to the list.
-//users can add lists to groups that they're a part of.
-//users can create and delete items on the list.
+// list page
 router.get("/list/:id", async (req, res) => {
   if (!req.session.loggedIn) {
     res.redirect("/login");
     return;
   }
-
   const listData = await List.findByPk(req.params.id, {
     include: [
       { model: Item },
-      { model: User },
+      { model: User, attributes: {exclude: ['password','email']} },
       { model: Group, through: { model: GroupList } },
     ],
   }).catch((err) => {
     res.json(err);
   });
 
+  if(!listData) {
+    res.send(`No list with that ID.`);
+    return;
+  }
+
   const groupData = await Group.findAll({
     include: [
       {
-      model: User, through: { model: GroupUser },
-      where: {
-        id: req.session.userID,
-      }},
-      // {
-      //   model: List, through: {model: GroupList},
-      //   where: {
-      //     list_id: req.params.id
-      //   }
-      // }
-    ]
+        model: User,
+        through: { model: GroupUser },
+        where: {
+          id: req.session.userID,
+        },
+         attributes: {exclude: ['password','email']}
+      },
+    ],
   }).catch((err) => {
     res.json(err);
   });
 
+  const ownedGroupData = await Group.findAll({
+    where: {
+      owning_user_id: req.session.userID,
+    },
+  }).catch((err) => {
+    res.json(err);
+  });
+
+  const ownedGroups = ownedGroupData.map((group) => group.get({ plain: true }));
   const groups = groupData.map((group) => group.get({ plain: true }));
   const list = listData.get({ plain: true });
-
+  
   if (req.session.userID !== list.user_id) {
     res.send(`You don't have access to that list.`);
     return;
-  } else {
-    res.render("listPage", { list, groups, loggedIn: req.session.loggedIn });
   }
+
+  res.render("listPage", {
+    list,
+    groups,
+    ownedGroups,
+    loggedIn: req.session.loggedIn,
+    userID: req.session.userID,
+  });
 });
 
+// login page
 router.get("/login", async (req, res) => {
   if (req.session.loggedIn) {
     res.redirect("/");
